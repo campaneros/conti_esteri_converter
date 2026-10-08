@@ -13,4 +13,4 @@ ufficiali della Banca d'Italia (ex Ufficio italiano cambi).
     streamlit run app.py
     python3 test_core.py
 
-Stato: prima versione, non ancora validata end-to-end dall'interfaccia.
+Stato: layout e formule verificati contro il foglio di riferimento (python3 test_compare.py, richiede Numbers su macOS); cambio del giorno, saldo iniziale al cambio medio del mese della prima riga.

@@ -193,26 +193,34 @@ def build_workbook(mov: pd.DataFrame, rates: pd.DataFrame, iso: str, opening: tu
         wm.append([y, mth, monthly[(y, mth)], SOURCE_MONTHLY])
     opening_row = 2 + keys.index(opening)
 
-    ws.append(["data", "causale", f"entrate ({iso})", f"uscite ({iso})", f"saldo ({iso})", "cambio",
-               "data cambio usata", "entrate (EUR)", "uscite (EUR)", "saldo (EUR)", "gg", "saldo x gg (EUR)"])
+    # Layout identico al foglio di riferimento: A..G in valuta, I..N in euro (H vuota).
+    ws.append(["data", "causale", "entrate", "uscite", "saldo", "gg", "saldo x gg", None,
+               "cambio", "entrate in euro", "uscite in euro", "saldo in euro", "gg", "saldo x gg in euro",
+               None, "data cambio usata"])
     n = len(mov)
     lookup = lambda x, col: (f"=LOOKUP(A{x},Cambi!$A$2:$A${n_rates},Cambi!${col}$2:${col}${n_rates})")
     for i, r in mov.iterrows():
         x, first = i + 2, i == 0
-        ws.append([r["data"].to_pydatetime(), r["causale"],
-                   r["entrate"] or None, r["uscite"] or None,
-                   f"=N(C{x})-N(D{x})" if first else f"=E{x-1}+N(C{x})-N(D{x})",
-                   f"='Medie mensili'!C{opening_row}" if first else lookup(x, "B"),
-                   "media mensile" if first else lookup(x, "A"),
-                   f'=IF(C{x}="","",C{x}/F{x})', f'=IF(D{x}="","",D{x}/F{x})',
-                   f"=N(H{x})-N(I{x})" if first else f"=J{x-1}+N(H{x})-N(I{x})",
-                   f"=A{x+1}-A{x}" if i < n - 1 else f"=DATE(YEAR(A{x}),12,31)-A{x}",
-                   f"=K{x}*J{x}"])
-    for sheet in (ws, wr):
-        for row in sheet.iter_rows(min_row=2, max_col=1):
-            row[0].number_format = "DD/MM/YYYY"
-    for row in ws.iter_rows(min_row=2, min_col=7, max_col=7):
+        ws.append([
+            r["data"].to_pydatetime(), r["causale"], r["entrate"] or None, r["uscite"] or None,
+            f"=C{x}-D{x}" if first else f"=E{x-1}+C{x}-D{x}",
+            f"=DAYS(A{x+1},A{x})" if i < n - 1 else 0,
+            f"=F{x}*E{x}", None,
+            f"='Medie mensili'!C{opening_row}" if first else lookup(x, "B"),
+            f"=C{x}/I{x}" if r["entrate"] else None,
+            f"=D{x}/I{x}" if r["uscite"] else None,
+            f"=J{x}-K{x}" if first else f"=L{x-1}+J{x}-K{x}",
+            f"=F{x}", f"=M{x}*L{x}", None,
+            "media mensile" if first else lookup(x, "A")])
+    for row in ws.iter_rows(min_row=2, min_col=1, max_col=1):
         row[0].number_format = "DD/MM/YYYY"
+    for row in ws.iter_rows(min_row=2, min_col=16, max_col=16):
+        row[0].number_format = "DD/MM/YYYY"
+    for row in wr.iter_rows(min_row=2, max_col=1):
+        row[0].number_format = "DD/MM/YYYY"
+    for col in ("F", "M"):  # giorni: numero intero, non una data/durata
+        for row in ws.iter_rows(min_row=2, min_col=ws[f"{col}1"].column, max_col=ws[f"{col}1"].column):
+            row[0].number_format = "0"
     for sheet in (ws, wr, wm):
         for col in range(1, sheet.max_column + 1):
             sheet.cell(row=1, column=col).font = bold
@@ -220,7 +228,7 @@ def build_workbook(mov: pd.DataFrame, rates: pd.DataFrame, iso: str, opening: tu
 
     last = n + 1
     ws.cell(row=last + 2, column=2, value="giacenza media (EUR)").font = bold
-    ws.cell(row=last + 2, column=10, value=f"=SUM(L2:L{last})/SUM(K2:K{last})")
+    ws.cell(row=last + 2, column=14, value=f"=SUM(N2:N{last})/SUM(M2:M{last})")
     buf = io.BytesIO()
     wb.save(buf)
     return buf.getvalue()

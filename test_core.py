@@ -29,7 +29,7 @@ def test_build_workbook_struttura():
     rates = pd.DataFrame({"data": pd.to_datetime(["2025-01-03"]), "cambio": [0.8]})
     wb = load_workbook(io.BytesIO(core.build_workbook(mov, rates, "GBP", (2024, 12), {(2024, 12): 0.83, (2025, 1): 0.84})))
     assert wb.sheetnames == ["Movimenti", "Cambi", "Medie mensili"]
-    assert wb["Movimenti"]["F2"].value == "='Medie mensili'!C2"
+    assert wb["Movimenti"]["I2"].value == "='Medie mensili'!C2"
     assert wb["Cambi"]["B2"].value == 0.8
 
 
