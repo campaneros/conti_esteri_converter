@@ -1,3 +1,5 @@
+import datetime as dt
+
 import streamlit as st
 
 import core
@@ -29,6 +31,35 @@ def currencies():
 def convert(mov, iso, opening):
     return core.convert(mov, iso, opening)
 
+
+@st.cache_data(ttl=3600, show_spinner="Scarico i cambi dalla Banca d'Italia...")
+def calendar_file(iso, name, start, end):
+    return core.calendar_workbook(iso, name, core.calendar_rates(iso, start, end))
+
+
+with st.expander("Ti servono solo i cambi giorno per giorno?"):
+    st.caption("Scarica un foglio Excel con il cambio ufficiale di ogni giorno per una valuta, senza caricare nessun file.")
+    try:
+        all_cur = currencies()
+    except core.RatesError as exc:
+        st.error(str(exc))
+        st.stop()
+    only_iso = st.selectbox("Valuta dei cambi", list(all_cur), format_func=lambda k: f"{k} - {all_cur[k]}",
+                            index=None, placeholder="Scrivi il nome o il codice, ad esempio sterlina o GBP",
+                            key="only_iso")
+    last_year = dt.date.today().year - 1
+    c_from, c_to = st.columns(2)
+    d_from = c_from.date_input("Dal", dt.date(last_year, 1, 1), format="DD/MM/YYYY")
+    d_to = c_to.date_input("Al", dt.date(last_year, 12, 31), max_value=dt.date.today(), format="DD/MM/YYYY")
+    if only_iso and d_from > d_to:
+        st.error("La data iniziale è dopo quella finale.")
+    elif only_iso:
+        try:
+            data = calendar_file(only_iso, all_cur[only_iso], d_from, d_to)
+            st.download_button("Scarica i cambi in Excel", data, file_name=f"cambi_{only_iso}_{d_from:%Y%m%d}_{d_to:%Y%m%d}.xlsx",
+                               mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        except core.RatesError as exc:
+            st.error(f"Non sono riuscito a ottenere i cambi: {exc}")
 
 st.subheader("1. File con i movimenti")
 upload = st.file_uploader("Trascina qui il file o sceglilo dal computer", type=["xlsx", "ods", "numbers"],

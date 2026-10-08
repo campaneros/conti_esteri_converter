@@ -1,4 +1,4 @@
-"""Confronto con il foglio di riferimento (esempi/conto_estero_originale.xlsx).
+"""Confronto con il foglio di riferimento (CALCOLO CONTO ESTERO.numbers).
 
 Livello A (fedeltà formule): stessi cambi dell'originale -> tutte le colonne devono coincidere.
 Livello B (cambi): cambi ufficiali Banca d'Italia vs cambi scritti a mano nell'originale.
@@ -17,7 +17,7 @@ import pandas as pd
 import core
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-ORIGINALE = os.path.join(HERE, "esempi", "conto_estero_originale.xlsx")
+ORIGINALE = os.path.join(HERE, "CALCOLO CONTO ESTERO.numbers")
 COLONNE = {"E": "saldo", "F": "gg", "G": "saldo x gg", "J": "entrate EUR", "K": "uscite EUR",
            "L": "saldo EUR", "M": "gg EUR", "N": "saldo x gg EUR"}
 TOL = 1e-6
@@ -32,8 +32,8 @@ def num(v):
 
 
 def load_original():
-    ws = openpyxl.load_workbook(ORIGINALE, data_only=True).active
-    return [[c.value for c in r] for r in ws.iter_rows(min_row=2, max_col=14)]
+    from numbers_parser import Document  # valori già calcolati dal file Numbers
+    return [list(r) for r in Document(ORIGINALE).sheets[0].tables[0].rows(values_only=True)[1:]]
 
 
 def recalc(xlsx_bytes: bytes):

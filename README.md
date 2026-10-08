@@ -5,7 +5,9 @@ ufficiali della Banca d'Italia (ex Ufficio italiano cambi).
 
 - Cambio del giorno; sabato, domenica e festivi usano l'ultimo cambio disponibile.
 - Saldo iniziale: cambio medio mensile (stessi valori dei provvedimenti dell'Agenzia delle Entrate).
-- Output: file Excel con fogli `Movimenti` (formule), `Cambi` e `Medie mensili`.
+- Output: file Excel con fogli `Movimenti` (formule), `Cambi` (dal 1° gennaio, senza i giorni del dicembre precedente) e `Medie mensili`.
+- Dalla pagina iniziale si possono scaricare anche solo i cambi giorno per giorno di una valuta, senza caricare file.
+- `esempi/` contiene i cambi giornalieri del 2025 per USD e GBP.
 
 ## Uso
 

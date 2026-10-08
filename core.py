@@ -211,16 +211,25 @@ def build_workbook(mov: pd.DataFrame, rates: pd.DataFrame, iso: str, opening: tu
             f"=D{x}/I{x}" if r["uscite"] else None,
             f"=J{x}-K{x}" if first else f"=L{x-1}+J{x}-K{x}",
             f"=F{x}", f"=M{x}*L{x}", None,
-            "media mensile" if first else lookup(x, "A")])
+            f"media mensile {opening[1]:02d}/{opening[0]}" if first
+            else asof_rate(rates, r["data"])[0].to_pydatetime()])  # data fissa, visibile anche senza ricalcolo
     for row in ws.iter_rows(min_row=2, min_col=1, max_col=1):
-        row[0].number_format = "DD/MM/YYYY"
+        row[0].number_format = "dd/mm/yyyy"
     for row in ws.iter_rows(min_row=2, min_col=16, max_col=16):
-        row[0].number_format = "DD/MM/YYYY"
+        row[0].number_format = "dd/mm/yyyy"
     for row in wr.iter_rows(min_row=2, max_col=1):
-        row[0].number_format = "DD/MM/YYYY"
-    for col in ("F", "M"):  # giorni: numero intero, non una data/durata
+        row[0].number_format = "dd/mm/yyyy"
+    formats = {"F": "0", "M": "0",  # giorni: numero intero, non una data/durata
+               **dict.fromkeys("CDEG", "#,##0.00"),  # valuta: migliaia e centesimi
+               **dict.fromkeys("JKLN", "#,##0.000"),  # euro: 3 decimali
+               "I": "0.00000"}
+    for col, fmt in formats.items():
         for row in ws.iter_rows(min_row=2, min_col=ws[f"{col}1"].column, max_col=ws[f"{col}1"].column):
-            row[0].number_format = "0"
+            row[0].number_format = fmt
+    for row in wr.iter_rows(min_row=2, min_col=2, max_col=2):
+        row[0].number_format = "0.00000"
+    for row in wm.iter_rows(min_row=2, min_col=3, max_col=3):
+        row[0].number_format = "0.00000"
     for sheet in (ws, wr, wm):
         for col in range(1, sheet.max_column + 1):
             sheet.cell(row=1, column=col).font = bold
@@ -228,16 +237,61 @@ def build_workbook(mov: pd.DataFrame, rates: pd.DataFrame, iso: str, opening: tu
 
     last = n + 1
     ws.cell(row=last + 2, column=2, value="giacenza media (EUR)").font = bold
-    ws.cell(row=last + 2, column=14, value=f"=SUM(N2:N{last})/SUM(M2:M{last})")
+    giacenza = ws.cell(row=last + 2, column=14, value=f"=SUM(N2:N{last})/SUM(M2:M{last})")
+    giacenza.number_format = "#,##0.000"
     buf = io.BytesIO()
     wb.save(buf)
     return buf.getvalue()
+
+
+def trim_rates(rates: pd.DataFrame, first_day: pd.Timestamp) -> pd.DataFrame:
+    """Tiene i cambi dal 1° gennaio dell'anno di first_day (o dall'ultimo cambio che serve a first_day)."""
+    needed = asof_rate(rates, first_day)[0]
+    start = min(needed, pd.Timestamp(first_day.year, 1, 1))
+    return rates[rates["data"] >= start].reset_index(drop=True)
 
 
 def convert(mov: pd.DataFrame, iso: str, opening: tuple[int, int]) -> tuple[bytes, pd.DataFrame]:
     """Scarica i cambi necessari e costruisce l'xlsx. Ritorna (xlsx, tabella cambi)."""
     start = mov["data"].iloc[0].date() - dt.timedelta(days=LOOKBACK_DAYS)
     end = mov["data"].iloc[-1].date()
-    rates = daily_rates(iso, start, end)
+    # la prima riga è il saldo iniziale (cambio medio): i cambi giornalieri servono dalla seconda in poi
+    first_day = mov["data"].iloc[1 if len(mov) > 1 else 0]
+    rates = trim_rates(daily_rates(iso, start, end), first_day)
     monthly = {k: monthly_average(iso, *k) for k in months_needed(mov, opening)}
     return build_workbook(mov, rates, iso, opening, monthly), rates
+
+
+def calendar_rates(iso: str, start: dt.date, end: dt.date) -> pd.DataFrame:
+    """Un cambio per ogni giorno di calendario: data, cambio, data_quotazione (ultima ufficiale disponibile)."""
+    if start > end:
+        raise ValueError("La data iniziale è dopo quella finale.")
+    quoted = daily_rates(iso, start - dt.timedelta(days=LOOKBACK_DAYS), end)
+    days = pd.DataFrame({"data": pd.date_range(start, end)})
+    out = pd.merge_asof(days, quoted.rename(columns={"data": "data_quotazione"}),
+                        left_on="data", right_on="data_quotazione")
+    if out["cambio"].isna().any():
+        raise RatesError(f"Nessun cambio {iso} disponibile prima del {start:%d/%m/%Y}.")
+    return out[["data", "cambio", "data_quotazione"]]
+
+
+def calendar_workbook(iso: str, name: str, days: pd.DataFrame) -> bytes:
+    """Solo i cambi giorno per giorno di una valuta, in un foglio."""
+    wb = Workbook()
+    ws = wb.active
+    ws.title = f"Cambi {iso}"
+    ws.append(["data", f"cambio {iso} per 1 EUR", "data quotazione ufficiale", "fonte"])
+    for _, r in days.iterrows():
+        ws.append([r["data"].to_pydatetime(), r["cambio"], r["data_quotazione"].to_pydatetime(), SOURCE])
+    ws.append([])
+    ws.append([f"{name}. Sabato, domenica e festivi non hanno quotazione: vale l'ultima disponibile "
+               "(colonna C)."])
+    for row in ws.iter_rows(min_row=2, max_row=len(days) + 1):
+        row[0].number_format = row[2].number_format = "dd/mm/yyyy"
+        row[1].number_format = "0.00000"
+    for col in range(1, 5):
+        ws.cell(row=1, column=col).font = Font(bold=True)
+        ws.column_dimensions[get_column_letter(col)].width = 26
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()

@@ -1,3 +1,7 @@
 __pycache__/
 .claude/
 .DS_Store
+# file scaricati dall app
+movimenti_*.xlsx
+cambi_*.xlsx
+!esempi/cambi_*.xlsx
