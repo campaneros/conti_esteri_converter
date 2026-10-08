@@ -63,6 +63,7 @@ def test_numbers_reale_con_colonne_duplicate():
 def test_live_gbp_gennaio_2025():
     rates = core.daily_rates("GBP", pd.Timestamp("2025-01-01").date(), pd.Timestamp("2025-01-14").date())
     assert len(rates) == 9  # niente 1/1, sabati e domeniche
+    assert str(rates["data"].dtype) == "datetime64[ns]"  # con pandas 3 la precisione varia: il merge_asof si rompeva
     assert core.monthly_average("GBP", 2025, 2) == 0.83071  # = PDF Agenzia Entrate feb 2025
 
 

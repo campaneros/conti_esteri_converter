@@ -53,12 +53,13 @@ def daily_rates(iso: str, start: dt.date, end: dt.date) -> pd.DataFrame:
     """Cambi giornalieri: colonne data, cambio (valuta per 1 EUR). Solo giorni con quotazione."""
     data = _get("dailyTimeSeries", startDate=start.isoformat(), endDate=end.isoformat(),
                 baseCurrencyIsoCode=iso, currencyIsoCode="EUR", lang="it")
-    rows = [(pd.Timestamp(r["referenceDate"]),
-             _to_units_per_eur(float(r["avgRate"]), r["exchangeConvention"]))
+    rows = [(r["referenceDate"], _to_units_per_eur(float(r["avgRate"]), r["exchangeConvention"]))
             for r in data.get("rates", [])]
     if not rows:
         raise RatesError(f"Nessun cambio {iso} tra {start} e {end}.")
-    return pd.DataFrame(rows, columns=["data", "cambio"]).sort_values("data").reset_index(drop=True)
+    out = pd.DataFrame(rows, columns=["data", "cambio"])
+    out["data"] = pd.to_datetime(out["data"]).astype("datetime64[ns]")  # stessa precisione con pandas 2 e 3
+    return out.sort_values("data").reset_index(drop=True)
 
 
 def monthly_average(iso: str, year: int, month: int) -> float | None:
@@ -267,7 +268,7 @@ def calendar_rates(iso: str, start: dt.date, end: dt.date) -> pd.DataFrame:
     if start > end:
         raise ValueError("La data iniziale è dopo quella finale.")
     quoted = daily_rates(iso, start - dt.timedelta(days=LOOKBACK_DAYS), end)
-    days = pd.DataFrame({"data": pd.date_range(start, end)})
+    days = pd.DataFrame({"data": pd.date_range(start, end).astype("datetime64[ns]")})
     out = pd.merge_asof(days, quoted.rename(columns={"data": "data_quotazione"}),
                         left_on="data", right_on="data_quotazione")
     if out["cambio"].isna().any():
