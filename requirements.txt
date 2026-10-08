@@ -1,0 +1,6 @@
+streamlit
+openpyxl
+odfpy
+numbers-parser
+pandas
+requests

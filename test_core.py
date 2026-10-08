@@ -1,0 +1,61 @@
+"""Run: python3 test_core.py  (rete necessaria solo per il test live)."""
+import io
+
+import pandas as pd
+from openpyxl import load_workbook
+
+import core
+
+
+def test_asof_weekend_usa_giorno_precedente():
+    rates = pd.DataFrame({"data": pd.to_datetime(["2025-01-02", "2025-01-03", "2025-01-06"]),
+                          "cambio": [0.83, 0.84, 0.85]})
+    day, rate = core.asof_rate(rates, pd.Timestamp("2025-01-05"))  # domenica
+    assert (day, rate) == (pd.Timestamp("2025-01-03"), 0.84)
+
+
+def test_normalize_importo_con_segno_e_controllo_saldo():
+    raw = pd.DataFrame({"data": ["10/01/2025", "05/01/2025"], "importo": [-50, 100], "saldo": [50, 100]})
+    mov = core.normalize(raw, core.guess_mapping(list(raw.columns)))
+    assert mov["entrate"].tolist() == [100, 0] and mov["uscite"].tolist() == [0, 50]
+    assert core.saldo_mismatches(mov) == []
+    mov.loc[1, "saldo_dichiarato"] = 40
+    assert core.saldo_mismatches(mov) == [2]
+
+
+def test_build_workbook_struttura():
+    mov = pd.DataFrame({"data": pd.to_datetime(["2024-12-31", "2025-01-04"]), "causale": ["saldo", ""],
+                        "entrate": [100.0, 0.0], "uscite": [0.0, 10.0], "saldo_dichiarato": [100.0, 90.0]})
+    rates = pd.DataFrame({"data": pd.to_datetime(["2025-01-03"]), "cambio": [0.8]})
+    wb = load_workbook(io.BytesIO(core.build_workbook(mov, rates, "GBP", (2024, 12), {(2024, 12): 0.83, (2025, 1): 0.84})))
+    assert wb.sheetnames == ["Movimenti", "Cambi", "Medie mensili"]
+    assert wb["Movimenti"]["F2"].value == "='Medie mensili'!C2"
+    assert wb["Cambi"]["B2"].value == 0.8
+
+
+def test_colonne_duplicate_non_rompono_normalize():
+    assert core.unique_names(["data", "saldo", "saldo", None]) == ["data", "saldo", "saldo.1", "colonna 4"]
+    raw = pd.DataFrame([["01/01/2025", 5, 5, 7]], columns=core.unique_names(["data", "entrate", "saldo", "saldo"]))
+    mov = core.normalize(raw, core.guess_mapping(list(raw.columns)))
+    assert mov["saldo_dichiarato"].tolist() == [5]
+
+
+def test_numbers_reale_con_colonne_duplicate():
+    import os
+    path = os.path.join(os.path.dirname(__file__), "CALCOLO CONTO ESTERO.numbers")
+    raw = core.read_table(path, open(path, "rb").read())
+    mov = core.normalize(raw, core.guess_mapping(list(raw.columns)))
+    assert len(mov) == 44 and core.saldo_mismatches(mov) == []
+
+
+def test_live_gbp_gennaio_2025():
+    rates = core.daily_rates("GBP", pd.Timestamp("2025-01-01").date(), pd.Timestamp("2025-01-14").date())
+    assert len(rates) == 9  # niente 1/1, sabati e domeniche
+    assert core.monthly_average("GBP", 2025, 2) == 0.83071  # = PDF Agenzia Entrate feb 2025
+
+
+if __name__ == "__main__":
+    for name, fn in list(globals().items()):
+        if name.startswith("test_"):
+            fn()
+            print("ok", name)
